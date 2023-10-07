@@ -1,0 +1,295 @@
+---
+title: "Bike Share Data Analysis"
+output: html_notebook
+---
+
+```{r}
+install.packages("jupytext")
+
+knitr::opts_chunk$set(jupytext_formats = "ipynb,Rmd")
+
+```
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*.
+
+**#1 Popular times of travel** (i.e., occurs most often in the start time)
+
+-   [**What is the most common month?**]{.underline}
+
+-   What is the most common day of week?
+
+-   What is the most common hour of day?
+
+**#2 Popular stations and trip**
+
+-   What is the most common start station?
+
+-   [**What is the most common end station?**]{.underline}
+
+-   What is the most common trip from start to end (i.e., most frequent combination of start station and end station)?
+
+**#3 Trip duration**
+
+-   What is the total travel time for users in different cities?
+
+-   What is the average travel time for users in different cities?
+
+**#4 User info**
+
+-   What are the counts of each user type?
+
+-   What are the counts of each gender (only available for NYC and Chicago)?
+
+-   What are the earliest, most recent, most common year of birth (only available for NYC and Chicago)?
+
+```{r}
+install.packages("dplyr","summarytools","ggplot2")
+```
+
+```{r}
+library(dplyr, summarytools, ggplot2)
+```
+
+## Load, Inspect, and Clean the Data
+
+```{r}
+ny = read.csv("new-york-city.csv")
+wash = read.csv("washington.csv")
+chi = read.csv("chicago.csv")
+```
+
+```{r}
+colnames(ny)
+```
+
+```{r}
+colnames(wash)
+```
+
+```{r}
+colnames(chi)
+```
+
+```{r}
+str(ny)
+```
+
+```{r}
+str(wash)
+```
+
+```{r}
+str(chi)
+```
+
+------------------------------------------------------------------------
+
+### Fix Missing Data
+
+The dataframe 'wash' does not have the columns `$Gender` or `$Birth.Year`, which could affect combining the data. Will create some dummy columns to make the shapes the same.
+
+```{r}
+wash$Gender <- NA
+wash$Birth.Year <-NA
+```
+
+### Fix Data Types
+
+Additionally, all `$Start.Time` and `$End.Times` are of the type character, should be some
+
+```{r}
+formatDateTimeColumn <- function(df, col_name) {
+  # Check if the specified column exists in the dataframe
+  if (!col_name %in% colnames(df)) {
+    stop("Column not found in the dataframe.")
+  }
+  
+  # Convert the specified column to POSIXct
+  df[[col_name]] <- as.POSIXct(df[[col_name]], format = "%Y-%m-%d %H:%M:%S")
+  
+  # Format the column using strftime()
+  df[[col_name]] <- strftime(df[[col_name]], format = "%Y-%m-%d %H:%M:%S")
+  
+  return(df)
+}
+```
+
+```{r}
+ny <- formatDateTimeColumn(ny, "Start.Time")
+wash <- formatDateTimeColumn(wash, "Start.Time")
+chi <- formatDateTimeColumn(chi, "Start.Time")
+```
+
+```{r}
+ny <- formatDateTimeColumn(ny, "End.Time")
+wash <- formatDateTimeColumn(wash, "End.Time")
+chi <- formatDateTimeColumn(chi, "End.Time")
+```
+
+### Put it all together and mix it all up
+
+Before I combine my dataframes into one master one, I need to indicate which city/dataset the values come from
+
+```{r}
+ny$City <- "NY"
+wash$City <- "Washington"
+chi$City <- "Chicago"
+```
+
+```{r}
+merged_df <-rbind(ny,wash)
+merged_df <- rbind(merged_df,chi)
+head(merged_df)
+```
+
+# **Questions:**
+
+## **#1 Popular times of travel** (i.e., occurs most often in the start time)
+
+-   What is the most common month?
+
+```{r}
+# Extract the month from the 'Start.Time' column
+merged_df$Start.Month <- month(merged_df$Start.Time)
+
+# Calculate the mode (most common) month
+mode_month <- as.integer(names(sort(table(merged_df$Start.Month), decreasing = TRUE)[1]))
+
+# Convert the mode_month to a month name
+mode_month_name <- month.name[mode_month]
+
+# Print the result
+cat("The most common month is:", mode_month_name, "\n")
+```
+
+```{r}
+# Extract the month from the 'Start.Time' column
+merged_df$Start.Month <- month(merged_df$Start.Time)
+
+# Create separate dataframes for each city
+ny_data <- merged_df %>% filter(City == "NY")
+wash_data <- merged_df %>% filter(City == "Washington")
+chi_data <- merged_df %>% filter(City == "Chicago")
+
+# Create plots for each city
+ny_data <- ggplot(ny_data, aes(x = Start.Month)) +
+  geom_bar() +
+  labs(title = "New York - Rides per Month", x = "Month", y = "Count")
+
+wash_data <- ggplot(wash_data, aes(x = Start.Month)) +
+  geom_bar() +
+  labs(title = "Washington - Rides per Month", x = "Month", y = "Count")
+
+chi_data <- ggplot(chi_data, aes(x = Start.Month)) +
+  geom_bar() +
+  labs(title = "Chicago - Rides per Month", x = "Month", y = "Count")
+
+# Print the plots
+print(ny_data)
+print(wash_data)
+print(chi_data)
+```
+
+Summary: The dataset indicates that June is the most popular month, which could indicate an increase in ridership for the summer time; however after visualizing, it looks like we are limited to just the first half of the year, so this assumption could be wrong.
+
+------------------------------------------------------------------------
+
+## **#2 Popular stations and trip**
+
+-   What is the most common start station?
+
+```{r}
+# Use the table() function to count the occurrences of each end station
+end_station_counts <- table(merged_df$End.Station)
+
+# Sort the counts in descending order
+sorted_counts <- sort(end_station_counts, decreasing = TRUE)
+
+# Get the top 10 most common end stations
+top_10_end_stations <- head(sorted_counts, 10)
+
+# Print the result
+# print(top_10_end_stations)
+```
+
+```{r}
+station_data <-as.data.frame(top_10_end_stations)
+colnames(station_data) <- c("End_Station","Count")
+
+
+# Show the results
+ggplot(station_data, aes(x = reorder(End_Station, -Count), y = Count)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(x = "End Station", y = "Count") +
+  ggtitle("Top 10 End Stations") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Let's get more complicated, let's graph by City, as well:
+
+```{r}
+top_stations <- merged_df %>%
+  group_by(City, End.Station) %>%
+  summarize(Count = n()) %>%
+  arrange(City, desc(Count)) %>%
+  group_by(City) %>%
+  top_n(10, wt = Count)
+
+# Create a bar plot with bars colored by City and a legend
+ggplot(top_stations, aes(x = reorder(End.Station, -Count), y = Count, fill = City)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "End Station", y = "Count") +
+  ggtitle("Top 10 End Stations Across All Cities") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = c("NY" = "skyblue", "Washington" = "salmon", "Chicago" = "chartreuse")) +
+  guides(fill = guide_legend(title = "City"))
+```
+
+Summary: I was able to see the top 10 end stations, however, when compared to all cities -- Washington did not have any stations in the top 10.
+
+## **#4 User info**
+
+-   What are the earliest, most recent, most common year of birth (only available for NYC and Chicago)?
+
+```{r}
+# Load the necessary library (if not already loaded)
+# install.packages("dplyr") # Uncomment this line if you haven't installed dplyr
+library(dplyr)
+
+# Assuming your dataframe is named 'merged_df'
+
+# Remove missing or invalid birth years (if any)
+merged_df <- merged_df %>%
+  filter(!is.na(Birth.Year) & Birth.Year >= 1900)
+
+# Find the earliest birth year
+earliest_birth_year <- min(merged_df$Birth.Year)
+
+# Find the most recent birth year
+most_recent_birth_year <- max(merged_df$Birth.Year)
+
+# Find the most common birth year
+most_common_birth_year <- merged_df %>%
+  group_by(Birth.Year) %>%
+  summarize(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  slice(1) %>%
+  pull(Birth.Year)
+
+# Print the results
+cat("Earliest birth year:", earliest_birth_year, "\n")
+cat("Most recent birth year:", most_recent_birth_year, "\n")
+cat("Most common birth year:", most_common_birth_year, "\n")
+
+```
+
+Summary: We can see that there are some very old riders (someone born at least in 1900), but the most common birth year is slightly younger than I am (by a year at 1986).
+
+------------------------------------------------------------------------
+
+# Export for Submission
+
+```{}
+```
